@@ -1,4 +1,12 @@
 
+function uuidv4() {
+  return 'xxxxxxxx-xxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+
 class World{
 	constructor(){
 		this.time = 0
@@ -8,12 +16,19 @@ class World{
 	}
 
 	tick(){
-		console.log("=======================")
+		//console.log("=======================")
 		this.time++
 		//update the climate
 		this.climate.tick(this.time)
 		//apply the climate to the farm
 		this.farm.tick(this.time,this.climate.conditions())
+		this.render()
+	}
+
+	render(){
+		//The climate will need to be updated 
+		//the plants will need to be drawn or redrawn
+		this.farm.render()
 	}
 }
 
@@ -31,7 +46,7 @@ class Farm {
 		console.log(conditions)
 		_.map(this.plants,function(p){
 			p.tick(conditions)
-			console.log(p.status())
+			//console.log(p.status())
 		})
 
 		//this will be one of the more complex functions in the whole thing
@@ -48,9 +63,18 @@ class Farm {
 	place_structure(type,location) {
 		this.structures.push(new Structure(type, location))
 	}
+
+	render(){
+		_.map(this.plants, function(p){
+			var state = p.render()
+			if(state.changed){
+				$(`#${state.id}`).remove()
+				$(".farm").append(state.div)
+			}
+			//if not changed, do nothing.
+		})
+	}
 }
-
-
 
 
 class Climate {
@@ -91,7 +115,7 @@ class Climate {
 	}
 }
 
-
+//it would be nice if this were stored somewhere else. 
 var plant_profiles = {
 	"F":{
 		"a":{
@@ -138,6 +162,7 @@ var family_names = {
 
 class Plant{
 	constructor(taxon, location){
+		this.id = uuidv4()
 		this.taxon = taxon.split(".") // F=flower V=vegetable T=tree
 		this.family = family_names[this.taxon[0]] 
 	
@@ -152,41 +177,72 @@ class Plant{
 		this.age = 0
 		this.health = 100
 		this.thirst = 0
-		this.stage_of_life = 1		
+		this.stage_of_life = 1
+
+		this.changed = true //while true, it will rerender the object 
 	}
 
 	tick(climate_effects){
-		this.age +=1	
-		// -1 health point for every climate var out-of-range
-		//this kid dreams of lisp
-		if((climate_effects.Rad>this.comfort_zone.Rad[0]) && (climate_effects.Rad<this.comfort_zone.Rad[1])){
-			this.health -= 1
-		}
-		if((climate_effects.Temp>this.comfort_zone.Temp[0]) && (climate_effects.Temp<this.comfort_zone.Temp[1])){
-			this.health -= 1
-			this.thirst += 1
-		}
-		if((climate_effects.Wind>this.comfort_zone.Wind[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
-			this.health -= 1
-		}
-		if((climate_effects.Light>this.comfort_zone.Light[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
-			this.health -= 1
-		}
-		if(this.thirst < this.thirst_zone){
-			this.heath -= 1
-		}
-		this.thirst += 1  
+		this.changed = false
+		if(this.health>0){
+			this.age +=1	
+			// -1 health point for every climate var out-of-range
+			//this kid dreams of lisp
+			if((climate_effects.Rad>this.comfort_zone.Rad[0]) && (climate_effects.Rad<this.comfort_zone.Rad[1])){
+				this.health -= 1
+				this.changed = true
+			}
+			if((climate_effects.Temp>this.comfort_zone.Temp[0]) && (climate_effects.Temp<this.comfort_zone.Temp[1])){
+				this.health -= 1
+				this.thirst += 1
+				this.changed = true
+			}
+			if((climate_effects.Wind>this.comfort_zone.Wind[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
+				this.health -= 1
+				this.changed = true
+			}
+			if((climate_effects.Light>this.comfort_zone.Light[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
+				this.health -= 1
+				this.changed = true
+			}
+			if(this.thirst < this.thirst_zone){
+				this.heath -= 1
+				this.changed = true
+			}
 
-		if(this.health<=0){
-			this.health = 0
-		}   
-		if(this.thirst>=100){
-			this.thirst = 100
-		} 	
+			this.thirst += 1  
+
+			if(this.health<=0){
+				this.health = 0
+			}   
+			if(this.thirst>=100){
+				this.thirst = 100
+			} 	
+		}
 	}
 
 	status(){
 		return `plant: ${this.name}, health: ${this.health}, thirst: ${this.thirst}, age:${this.age}`
+	}
+
+	render(){
+		//ideally we would have some art here
+		if(this.health>0){
+			var div =  `
+				<div class="plant ${this.taxon.join(".")}" id="${this.id}" 
+						style="left:${this.location} ; height:${this.health}"> 
+						${this.name[0]}
+				</div>`
+		}else{
+			var div =  `
+				<div class="plant ${this.taxon.join(".")} dead" id="${this.id}" 
+						style="left:${this.location}"> 
+						${this.name[0]}
+				</div>`
+		}
+
+		
+		return {changed:this.changed, id:this.id, div:div}
 	}
 
 }
@@ -201,15 +257,31 @@ class Structure{
 }
 
 
-var world = new World()
-$(document).ready( function(){
-	console.log("hiiii")
+class UiHelper{
+	constructor(){
+		this.tool = ""
+	}
+}
 
-	world.farm.place_flower("F.a", 0)
-	world.farm.place_flower("F.b", 5)
-	world.farm.place_flower("F.c", -4)
+
+var world = new World()
+var ui_state = new UiHelper()
+
+
+
+
+$(document).ready( function(){
+	//console.log("hiiii")
+
+	world.farm.place_flower("F.a", 40)
+	world.farm.place_flower("F.b", 100)
+	world.farm.place_flower("F.c", 500)
 
 	setInterval(() => world.tick(),1000)
 	
+	$(".world").on('click', '.farm', function(ev){
+		world.farm.place_flower("F.a", ev.pageX)
+	})	
 
 })
+
