@@ -56,6 +56,11 @@ class Farm {
 		//do so.
 	}
 	
+	water(plant_id){
+		var p = _.find(this.plants, function(p){return p.id==plant_id})
+		p.water()
+	}
+
 	place_flower(taxon, location) {
 		this.plants.push(new Plant(taxon, location))
 	}
@@ -86,23 +91,23 @@ class Climate {
 
 		this.Temp = 50 //
 		this.Temp_mag = 50
-		this.Temp_freq = .0001
+		this.Temp_freq = .01
 
 		this.Wind = 0 //[-100,100] occasional discontinuous changes, smooth intraday changes
 		this.Wind_mag = 100
-		this.Wind_freq = .0000000001
+		this.Wind_freq = .00000001
 
 		this.Light = 50 //[0,100] cloud cover. varies indirectly with temp, more slowly. 
 		this.Light_mag = 50
-		this.Light_freq = .0000001
+		this.Light_freq = .000001
 	}
 	tick(time){
 		//logistic growth
 		this.Rad = this.Rad_L/(1+Math.exp(-this.Rad_k*((time-1000)-this.Rad_x0)))
 		//just simple sine waves for now
-		this.Temp += this.Temp_mag*Math.sin(this.Temp_freq*time)
-		this.Wind += this.Wind_mag*Math.sin(this.Wind_freq*time)
-		this.Light += this.Light_mag*Math.sin(this.Light_freq*time)
+		this.Temp = this.Temp_mag*Math.sin(this.Temp_freq*time) + 50
+		this.Wind = -this.Wind_mag*Math.sin(this.Wind_freq*time) 
+		this.Light = this.Light_mag*Math.sin(this.Light_freq*time) + 50
 
 	}
 	conditions(){
@@ -127,7 +132,8 @@ var plant_profiles = {
 				Light:[50,100]
 			},
 			growth_rate:10,
-			thirst_zone:50
+			thirst_zone:50,
+			image:"sprout.png"
 		},
 		"b":{
 			name:"Monstura",
@@ -138,7 +144,8 @@ var plant_profiles = {
 				Light:[80,100]
 			},
 			growth_rate:10,
-			thirst_zone:80
+			thirst_zone:80,
+			image:"sprout2.png"
 		},
 		"c":{
 			name:"Airplant",
@@ -149,7 +156,8 @@ var plant_profiles = {
 				Light:[40,100]
 			},
 			growth_rate:10,
-			thirst_zone:30
+			thirst_zone:30,
+			image:"sprout3.png"
 		}
 	}
 }
@@ -171,6 +179,7 @@ class Plant{
 		this.comfort_zone = profile.comfort_zone
 		this.growth_rate = profile.growth_rate
 		this.thirst_zone = profile.thirst_zone
+		this.image = profile.image
 
 		this.location = location
 
@@ -188,20 +197,20 @@ class Plant{
 			this.age +=1	
 			// -1 health point for every climate var out-of-range
 			//this kid dreams of lisp
-			if((climate_effects.Rad>this.comfort_zone.Rad[0]) && (climate_effects.Rad<this.comfort_zone.Rad[1])){
+			if((climate_effects.Rad<this.comfort_zone.Rad[0]) || (climate_effects.Rad>this.comfort_zone.Rad[1])){
 				this.health -= 1
 				this.changed = true
 			}
-			if((climate_effects.Temp>this.comfort_zone.Temp[0]) && (climate_effects.Temp<this.comfort_zone.Temp[1])){
+			if((climate_effects.Temp<this.comfort_zone.Temp[0]) || (climate_effects.Temp>this.comfort_zone.Temp[1])){
 				this.health -= 1
 				this.thirst += 1
 				this.changed = true
 			}
-			if((climate_effects.Wind>this.comfort_zone.Wind[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
+			if((climate_effects.Wind<this.comfort_zone.Wind[0]) || (climate_effects.Wind>this.comfort_zone.Wind[1])){
 				this.health -= 1
 				this.changed = true
 			}
-			if((climate_effects.Light>this.comfort_zone.Light[0]) && (climate_effects.Wind<this.comfort_zone.Wind[1])){
+			if((climate_effects.Light<this.comfort_zone.Light[0]) || (climate_effects.Wind>this.comfort_zone.Wind[1])){
 				this.health -= 1
 				this.changed = true
 			}
@@ -221,6 +230,11 @@ class Plant{
 		}
 	}
 
+	water(){
+		this.thirst = 0
+		this.health += 10
+	}
+
 	status(){
 		return `plant: ${this.name}, health: ${this.health}, thirst: ${this.thirst}, age:${this.age}`
 	}
@@ -230,14 +244,14 @@ class Plant{
 		if(this.health>0){
 			var div =  `
 				<div class="plant ${this.taxon.join(".")}" id="${this.id}" 
-						style="left:${this.location} ; height:${this.health}"> 
-						${this.name[0]}
+						style="left:${this.location}; top:-${this.health}; width:40px; height:${this.health}"> 
+						<img src="${this.image}" style="width:100%;height:100%">
 				</div>`
 		}else{
 			var div =  `
 				<div class="plant ${this.taxon.join(".")} dead" id="${this.id}" 
 						style="left:${this.location}"> 
-						${this.name[0]}
+						Dead
 				</div>`
 		}
 
@@ -279,9 +293,18 @@ $(document).ready( function(){
 
 	setInterval(() => world.tick(),1000)
 	
+
+
 	$(".world").on('click', '.farm', function(ev){
-		world.farm.place_flower("F.a", ev.pageX)
-	})	
+		const randomFlower = ["F.a","F.b","F.c"][Math.floor(Math.random() * 3)];
+		world.farm.place_flower(randomFlower, ev.pageX-10)
+		
+	})
+
+	$('.world').on('click', '.plant', function(ev){
+		ev.stopPropagation()
+		world.farm.water(this.id)
+	})
 
 })
 
